@@ -1,3 +1,24 @@
+// --- Calibration Code --- To check IF LDR is working or not
+#include "mbed.h"
+
+DigitalInOut pin_mode_setter(A1);
+AnalogIn lightSensor(A1);
+
+int main() {
+    // Enable the internal pull-up resistor on pin A1
+    pin_mode_setter.mode(PullUp);
+    printf("--- LDR Calibration Started ---\n");
+    
+    while (true) {
+        int sensorValue = lightSensor.read() * 5000;
+        printf("Current Sensor Value: %d\n", sensorValue);
+        ThisThread::sleep_for(500ms);
+    }
+}
+
+
+// Main Code
+
 #include "mbed.h"
 
 // --- 7-Segment Display Setup (Common Anode: 0=ON, 1=OFF) ---
