@@ -1,0 +1,90 @@
+#include "mbed.h"
+
+// --- 7-Segment Display Setup (Common Anode: 0=ON, 1=OFF) ---
+DigitalOut segA(D2), segB(D3), segC(D4), segD(D5), segE(D6), segF(D7), segG(D8);
+
+// --- LDR Sensor Setup ---
+DigitalInOut entryLDR_mode(A0);
+AnalogIn entryLDR(A0);
+DigitalInOut exitLDR_mode(A1);
+AnalogIn exitLDR(A1);
+
+// --- Calibration ---
+// Set your specific threshold here
+const int DARKNESS_THRESHOLD = 400;
+
+// --- Global Variables ---
+int person_count = 0;
+// A more robust state machine
+enum State { IDLE, ENTERING, EXITING, ENTERING_BOTH_BLOCKED, EXITING_BOTH_BLOCKED };
+State system_state = IDLE;
+
+// Function to display numbers on the 7-segment display
+void displayDigit(int digit) {
+    switch (digit) {
+        case 0: segA=0; segB=0; segC=0; segD=0; segE=0; segF=0; segG=1; break;
+        case 1: segA=1; segB=0; segC=0; segD=1; segE=1; segF=1; segG=1; break;
+        case 2: segA=0; segB=0; segC=1; segD=0; segE=0; segF=1; segG=0; break;
+        case 3: segA=0; segB=0; segC=0; segD=0; segE=1; segF=1; segG=0; break;
+        case 4: segA=1; segB=0; segC=0; segD=1; segE=1; segF=0; segG=0; break;
+        case 5: segA=0; segB=1; segC=0; segD=0; segE=1; segF=0; segG=0; break;
+        case 6: segA=0; segB=1; segC=0; segD=0; segE=0; segF=0; segG=0; break;
+        case 7: segA=0; segB=0; segC=0; segD=1; segE=1; segF=1; segG=1; break;
+        case 8: segA=0; segB=0; segC=0; segD=0; segE=0; segF=0; segG=0; break;
+        case 9: segA=0; segB=0; segC=0; segD=1; segE=1; segF=0; segG=0; break;
+        default: segA=1; segB=1; segC=1; segD=1; segE=1; segF=1; segG=1; // Off
+    }
+}
+
+int main() {
+    entryLDR_mode.mode(PullUp);
+    exitLDR_mode.mode(PullUp);
+    displayDigit(person_count);
+
+    while (true) {
+        int entry_value = entryLDR.read() * 5000;
+        int exit_value = exitLDR.read() * 5000;
+        bool entry_blocked = entry_value > DARKNESS_THRESHOLD;
+        bool exit_blocked = exit_value > DARKNESS_THRESHOLD;
+
+        switch (system_state) {
+            case IDLE:
+                if (entry_blocked && !exit_blocked) system_state = ENTERING;
+                else if (exit_blocked && !entry_blocked) system_state = EXITING;
+                break;
+
+            case ENTERING:
+                if (exit_blocked) system_state = ENTERING_BOTH_BLOCKED;
+                else if (!entry_blocked) system_state = IDLE; // Aborted
+                break;
+            
+            case ENTERING_BOTH_BLOCKED:
+                if (!entry_blocked) { // The first sensor is now clear, person is moving IN
+                    person_count++;
+                    if (person_count > 9) person_count = 9;
+                    displayDigit(person_count);
+                    // Wait for the exit sensor to clear before resetting
+                    while(exitLDR.read() * 5000 > DARKNESS_THRESHOLD) ThisThread::sleep_for(50ms);
+                    system_state = IDLE;
+                }
+                break;
+
+            case EXITING:
+                if (entry_blocked) system_state = EXITING_BOTH_BLOCKED;
+                else if (!exit_blocked) system_state = IDLE; // Aborted
+                break;
+            
+            case EXITING_BOTH_BLOCKED:
+                if (!exit_blocked) { // The first sensor is now clear, person is moving OUT
+                    person_count--;
+                    if (person_count < 0) person_count = 0;
+                    displayDigit(person_count);
+                    // Wait for the entry sensor to clear before resetting
+                    while(entryLDR.read() * 5000 > DARKNESS_THRESHOLD) ThisThread::sleep_for(50ms);
+                    system_state = IDLE;
+                }
+                break;
+        }
+        ThisThread::sleep_for(20ms);
+    }
+}
